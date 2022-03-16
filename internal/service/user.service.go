@@ -6,11 +6,13 @@ import (
 	"authentication/internal/models"
 	"authentication/internal/repo"
 	"fmt"
+	"golang.org/x/crypto/bcrypt"
 )
 
 type UserService interface {
 	FindOne(dto dto.FindOne) (*models.User, error)
 	CreateUser(dto dto.CreateUser) (*models.User, error)
+	SignIn(user dto.CreateUser) (*models.User, error)
 }
 
 type userService struct {
@@ -24,11 +26,9 @@ func NewUserService(dao repo.DAO) UserService {
 }
 
 func (u *userService) FindOne(dto dto.FindOne) (*models.User, error) {
-	email := *dto.Email
-
-	user, err := u.dao.NewUserQuery().FindOneByEmail(email)
+	user, err := u.dao.NewUserQuery().FindOneByEmail(*dto.Email)
 	if user != nil {
-		err = apperrors.AlreadyExists()
+		err = apperrors.AlreadyExistsErr
 		return nil, err
 	}
 
@@ -38,14 +38,41 @@ func (u *userService) FindOne(dto dto.FindOne) (*models.User, error) {
 func (u *userService) CreateUser(dto dto.CreateUser) (*models.User, error) {
 	user, _ := u.dao.NewUserQuery().FindOneByEmail(*dto.Email)
 	if user != nil {
-		return nil, apperrors.AlreadyExists()
+		return nil, apperrors.AlreadyExistsErr
 	}
 
-	fmt.Println(*dto.Email, *dto.Password)
-	user, err := u.dao.NewUserQuery().InsertNewUser(*dto.Email, *dto.Password)
+	// hash user password
+	hashBytes, err := bcrypt.GenerateFromPassword([]byte(*dto.Password), 12)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := u.dao.NewUserQuery().InsertNewUser(*dto.Email, string(hashBytes)); err != nil {
+		return nil, err
+	}
+
+	user, err = u.dao.NewUserQuery().FindOneByEmail(*dto.Email)
 	if err != nil {
 		return nil, err
 	}
 
 	return user, nil
+}
+
+func (u *userService) SignIn(dto dto.CreateUser) (*models.User, error) {
+
+	user, err := u.dao.NewUserQuery().FindOneByEmail(*dto.Email)
+	if err != nil {
+		return nil, err
+	}
+
+	// compare stored hash with the given user password
+	err = bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(*dto.Password))
+	if err != nil {
+		fmt.Println(err)
+		return nil, apperrors.WrongPasswordErr
+	}
+
+	return user, err
+
 }

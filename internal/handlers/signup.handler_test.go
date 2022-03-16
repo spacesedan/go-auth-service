@@ -33,16 +33,18 @@ func TestSignUp(t *testing.T) {
 		}
 
 		mockUserService := new(mocks.MockedUserService)
-		mockUserService.On("FindOne", mock.Anything).Return(nil, nil)
+		mockTokenService := new(mocks.MockedTokenService)
 		mockUserService.On("CreateUser", mock.Anything).Return(mockedUser, nil)
+		mockTokenService.On("GenerateJWT", mock.Anything).Return("testToken", nil)
 
 		w := httptest.NewRecorder()
 
 		app := gin.Default()
 
 		NewHandler(&Config{
-			R:           app,
-			UserService: mockUserService,
+			R:            app,
+			UserService:  mockUserService,
+			TokenService: mockTokenService,
 		})
 
 		expectedBody, err := json.Marshal(gin.H{
@@ -67,7 +69,7 @@ func TestSignUp(t *testing.T) {
 
 	t.Run("User already exists", func(t *testing.T) {
 		mockUserService := new(mocks.MockedUserService)
-		mockUserService.On("CreateUser", mock.Anything).Return(nil, apperrors.AlreadyExists())
+		mockUserService.On("CreateUser", mock.Anything).Return(nil, apperrors.AlreadyExistsErr)
 
 		w := httptest.NewRecorder()
 
@@ -79,7 +81,7 @@ func TestSignUp(t *testing.T) {
 		})
 
 		expectedBody, err := json.Marshal(gin.H{
-			"error": apperrors.AlreadyExists().Error(),
+			"error": apperrors.AlreadyExistsErr.Error(),
 		})
 
 		testBody, err := json.Marshal(models.SignUpReq{
@@ -98,7 +100,7 @@ func TestSignUp(t *testing.T) {
 
 	t.Run("Missing Password", func(t *testing.T) {
 		mockUserService := new(mocks.MockedUserService)
-		mockUserService.On("CreateUser", mock.Anything).Return(nil, apperrors.AlreadyExists())
+		mockUserService.On("CreateUser", mock.Anything).Return(nil, nil)
 
 		w := httptest.NewRecorder()
 
@@ -133,7 +135,7 @@ func TestSignUp(t *testing.T) {
 
 	t.Run("Missing Email", func(t *testing.T) {
 		mockUserService := new(mocks.MockedUserService)
-		mockUserService.On("CreateUser", mock.Anything).Return(nil, apperrors.AlreadyExists())
+		mockUserService.On("CreateUser", mock.Anything).Return(nil, apperrors.AlreadyExistsErr)
 
 		w := httptest.NewRecorder()
 
@@ -168,7 +170,7 @@ func TestSignUp(t *testing.T) {
 
 	t.Run("Missing Body", func(t *testing.T) {
 		mockUserService := new(mocks.MockedUserService)
-		mockUserService.On("CreateUser", mock.Anything).Return(nil, apperrors.AlreadyExists())
+		mockUserService.On("CreateUser", mock.Anything).Return(nil, apperrors.AlreadyExistsErr)
 
 		w := httptest.NewRecorder()
 
@@ -202,4 +204,49 @@ func TestSignUp(t *testing.T) {
 		fmt.Println("Test body", w.Body.String())
 		assert.Equal(t, expectedBody, w.Body.Bytes())
 	})
+
+	t.Run("No JWT Token", func(t *testing.T) {
+
+		var mockedUser *models.User
+		mockedUser = &models.User{
+			Email:    email,
+			Username: "test",
+		}
+
+		mockUserService := new(mocks.MockedUserService)
+		mockTokenService := new(mocks.MockedTokenService)
+		mockUserService.On("CreateUser", mock.Anything).Return(mockedUser, nil)
+		mockTokenService.On("GenerateJWT", mock.Anything).Return(nil, apperrors.GeneratingTokenErr)
+
+		w := httptest.NewRecorder()
+
+		app := gin.Default()
+
+		NewHandler(&Config{
+			R:            app,
+			UserService:  mockUserService,
+			TokenService: mockTokenService,
+		})
+
+		expectedBody, err := json.Marshal(gin.H{
+			"user": nil,
+		})
+		assert.NoError(t, err)
+
+		testBody, err := json.Marshal(models.SignUpReq{
+			Email:    email,
+			Password: password,
+		})
+		assert.NoError(t, err)
+
+		req, err := http.NewRequest(http.MethodPost, "http://localhost:"+os.Getenv("PORT")+"/api/", bytes.NewBuffer(testBody))
+		assert.NoError(t, err)
+
+		app.ServeHTTP(w, req)
+		fmt.Println(w.Body.String())
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.Equal(t, expectedBody, w.Body.Bytes())
+
+	})
+
 }

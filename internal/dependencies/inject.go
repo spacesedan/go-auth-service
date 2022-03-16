@@ -14,13 +14,15 @@ func Inject(db *mongo.Database) (*gin.Engine, error) {
 	dao := repo.NewDAO(db)
 
 	// register services
+	tokenService := service.NewTokenService()
 	userService := service.NewUserService(dao)
 
 	app := gin.Default()
 
 	config := &handlers.Config{
-		UserService: userService,
-		R:           app,
+		UserService:  userService,
+		TokenService: tokenService,
+		R:            app,
 	}
 
 	handlers.NewHandler(config)

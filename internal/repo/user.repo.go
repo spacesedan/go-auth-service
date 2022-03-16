@@ -1,9 +1,11 @@
 package repo
 
 import (
+	"authentication/internal/apperrors"
 	"authentication/internal/models"
 	"context"
 	"errors"
+	"fmt"
 	"go.mongodb.org/mongo-driver/bson"
 )
 
@@ -14,7 +16,7 @@ var (
 
 type UserQuery interface {
 	FindOneByEmail(email string) (*models.User, error)
-	InsertNewUser(email, passwordHash string) (*models.User, error)
+	InsertNewUser(email, passwordHash string) error
 }
 
 type userQuery struct {
@@ -24,6 +26,7 @@ type userQuery struct {
 func (u *userQuery) FindOneByEmail(email string) (*models.User, error) {
 	m := DB.Collection(collectionName)
 
+	fmt.Println("FIND", email)
 	filter := bson.M{
 		"email": email,
 	}
@@ -37,42 +40,28 @@ func (u *userQuery) FindOneByEmail(email string) (*models.User, error) {
 	}
 
 	if user == nil {
-		return nil, errors.New("no user found")
+		return nil, apperrors.NoUserErr
 	}
 
 	return user, nil
 }
 
-func (u *userQuery) InsertNewUser(email, passwordHash string) (*models.User, error) {
+func (u *userQuery) InsertNewUser(email, passwordHash string) error {
 	m := DB.Collection(collectionName)
 
 	insert := bson.M{
-		"$set": bson.M{
-			"email":    email,
-			"password": passwordHash,
-		},
+		"email":     email,
+		"password":  passwordHash,
+		"username":  "",
+		"lastName":  "",
+		"firstName": "",
 	}
 
 	_, err := m.InsertOne(ctx, insert)
 	if err != nil {
-		return nil, errors.New("failed to insert user")
+		return errors.New("failed to insert user")
 	}
 
-	var user *models.User
+	return nil
 
-	filter := bson.M{
-		"email": email,
-	}
-
-	result := m.FindOne(ctx, filter)
-	if result == nil {
-		return nil, errors.New("no user found")
-	}
-
-	err = result.Decode(&user)
-	if err != nil {
-		return nil, errors.New("failed to decode user")
-	}
-
-	return user, nil
 }

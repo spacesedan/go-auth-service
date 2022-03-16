@@ -42,6 +42,16 @@ func (h *Handler) SignUp(c *gin.Context) {
 		return
 	}
 
+	token, err := h.tokenService.GenerateJWT(user)
+	if err == apperrors.GeneratingTokenErr {
+		c.AbortWithStatusJSON(http.StatusOK, gin.H{
+			"user": nil,
+		})
+		return
+	}
+
+	c.SetCookie("user", token, 1000*60*60*24, "/", "localhost", false, true)
+
 	c.JSON(http.StatusCreated, gin.H{
 		"user": user,
 	})
